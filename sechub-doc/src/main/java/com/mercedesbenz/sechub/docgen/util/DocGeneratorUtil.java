@@ -2,16 +2,19 @@
 package com.mercedesbenz.sechub.docgen.util;
 
 import java.lang.reflect.AnnotatedElement;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.scheduling.annotation.Scheduled;
 
+import com.mercedesbenz.sechub.commons.core.MustBeDocumented;
+import com.mercedesbenz.sechub.docgen.ConfigurationPropertiesData;
 import com.mercedesbenz.sechub.docgen.DocAnnotationData;
 import com.mercedesbenz.sechub.pds.PDSMustBeDocumented;
-import com.mercedesbenz.sechub.sharedkernel.DocumentationScopeConstants;
-import com.mercedesbenz.sechub.sharedkernel.MustBeDocumented;
 
 public class DocGeneratorUtil {
 
@@ -19,33 +22,40 @@ public class DocGeneratorUtil {
 
     }
 
+    public static String convertToIdentifier(String text) {
+        if (text == null) {
+            return "null";
+        }
+        return text.replaceAll(" ", "_").toLowerCase();
+    }
+
     public static DocAnnotationData buildDataForMustBeDocumented(MustBeDocumented info, AnnotatedElement element) {
         DocAnnotationData data = new DocAnnotationData();
-        data.scope = info.scope();
+        data.scope = ensureSafeScope(info.scope());
         data.isSecret = info.secret();
         data.description = info.value();
         buildSpringValueParts(data, element);
         buildSpringScheduledParts(data, element);
+        buildSpringConfigPropertiesParts(data, element);
 
-        /* when class name shall be used... */
-        if (DocumentationScopeConstants.SCOPE_USE_DEFINED_CLASSNAME_LOWERCASED.equals(data.scope)) {
-            data.scope = toCamelOne(fetchClass(element)).toLowerCase();
-        }
         return data;
+    }
+
+    private static String ensureSafeScope(String scope) {
+        if (scope == null) {
+            return "";
+        }
+        return scope;
     }
 
     public static DocAnnotationData buildDataForPDSMustBeDocumented(PDSMustBeDocumented info, AnnotatedElement element) {
         DocAnnotationData data = new DocAnnotationData();
-        data.scope = info.scope();
+        data.scope = ensureSafeScope(info.scope());
         data.isSecret = info.secret();
         data.description = info.value();
         buildSpringValueParts(data, element);
         buildSpringScheduledParts(data, element);
 
-        /* when class name shall be used... */
-        if (DocumentationScopeConstants.SCOPE_USE_DEFINED_CLASSNAME_LOWERCASED.equals(data.scope)) {
-            data.scope = toCamelOne(fetchClass(element)).toLowerCase();
-        }
         return data;
     }
 
@@ -54,12 +64,17 @@ public class DocGeneratorUtil {
         sb.append("\n");
     }
 
+    /*
+     * TODO Albert Tregnaghi, 2025-02-26: this should be removed/canged. Reason:
+     * scope is calculated
+     */
     public static DocAnnotationData buildDataBy(Value info, AnnotatedElement element) {
         DocAnnotationData data = new DocAnnotationData();
         buildSpringValueParts(data, element);
         buildSpringScheduledParts(data, element);
+
         data.description = "See " + fetchClass(element).getSimpleName() + ".java";
-        data.scope = toCamelOne(fetchClass(element)).toLowerCase();
+        data.scope = ensureSafeScope(toCamelOne(fetchClass(element)).toLowerCase());
         return data;
     }
 
@@ -121,6 +136,44 @@ public class DocGeneratorUtil {
             return;
         }
         data.springValue = value.value();
+    }
+
+    static void buildSpringConfigPropertiesParts(DocAnnotationData data, AnnotatedElement element) {
+        ConfigurationProperties value = element.getDeclaredAnnotation(ConfigurationProperties.class);
+        if (value == null) {
+            return;
+        }
+        data.propertiesData = createConfigurationPropertiesData(element, value);
+    }
+
+    public static ConfigurationPropertiesData createConfigurationPropertiesData(AnnotatedElement element, ConfigurationProperties value) {
+        ConfigurationPropertiesData pd = null;
+        if (element instanceof Class) {
+            pd = new ConfigurationPropertiesData();
+            Class<?> clazz = (Class<?>) element;
+            Constructor<?> boundConstructor = findBoundConstructorOrNull(clazz);
+
+            pd.properties = value;
+            pd.propertiesClass = clazz;
+            pd.constructor = boundConstructor;
+        } else {
+            throw new IllegalStateException("When the annotation " + MustBeDocumented.class.getSimpleName() + " shall be used in conjunction with "
+                    + ConfigurationProperties.class.getSimpleName() + " it must be defined at class level! But was on:" + element);
+        }
+        return pd;
+    }
+
+    private static Constructor<?> findBoundConstructorOrNull(Class<?> clazz) {
+        Constructor<?> boundConstructor = null;
+        for (Constructor<?> constructor : clazz.getConstructors()) {
+            ConstructorBinding bindingAnnotation = constructor.getDeclaredAnnotation(ConstructorBinding.class);
+            if (bindingAnnotation == null) {
+                continue;
+            }
+            boundConstructor = constructor;
+            break;
+        }
+        return boundConstructor;
     }
 
     static void buildSpringScheduledParts(DocAnnotationData data, AnnotatedElement element) {

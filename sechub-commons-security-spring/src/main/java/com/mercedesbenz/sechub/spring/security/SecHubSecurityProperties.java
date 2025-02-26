@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
 package com.mercedesbenz.sechub.spring.security;
 
-import static java.util.Objects.requireNonNull;
-import static java.util.Objects.requireNonNullElseGet;
+import static java.util.Objects.*;
 
 import java.time.Duration;
 import java.util.LinkedHashSet;
@@ -15,9 +14,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
+import com.mercedesbenz.sechub.commons.core.MustBeDocumented;
 import com.mercedesbenz.sechub.commons.core.security.CryptoAccess;
 import com.mercedesbenz.sechub.commons.core.util.SimpleStringUtils;
 
+@MustBeDocumented(scope = "oauth2")
 @ConfigurationProperties(prefix = SecHubSecurityProperties.PREFIX)
 public class SecHubSecurityProperties {
     static final String PREFIX = "sechub.security";
